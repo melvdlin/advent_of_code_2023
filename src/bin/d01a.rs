@@ -18,7 +18,7 @@ fn main() -> DynResult<()> {
                     .unwrap_or(0),
             )
         })
-        .map(|vals| 10 * vals.0 + vals.1)
+        .map(|(first, last)| 10 * first + last)
         .map(|val| val as usize)
         .sum();
 
