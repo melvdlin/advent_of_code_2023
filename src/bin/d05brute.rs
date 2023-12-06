@@ -3,8 +3,6 @@ use itertools::Itertools;
 
 use rangemap::RangeSet;
 use smallvec::SmallVec;
-use std::cmp::Ordering;
-use std::collections::BTreeSet;
 use std::env;
 use std::ops::Range;
 use std::str::FromStr;
@@ -25,59 +23,24 @@ fn main() -> DynResult<()> {
         .map(|chunk| parse_table(chunk, HEADER_SEPARATOR).ok_or("could not parse table"))
         .collect::<Result<SmallVec<[Table; 7]>, _>>()?;
 
-    let result = solve(seeds, &tables).unwrap_or(0);
+    let tables = tables
+        .iter()
+        .map(Table::reversed)
+        .rev()
+        .collect::<SmallVec<[Table; 7]>>();
+    let min = (0..).find(|n| {
+        if n % 1_000_000 == 0 {
+            dbg!(n);
+        }
+        seeds
+            .0
+            .contains(&tables.iter().fold(*n, |n, table| table.get(n)))
+    });
 
+    let result = min.unwrap();
     println!("{result}");
 
     Ok(())
-}
-
-fn solve(seeds: Seeds, tables: &[Table]) -> Option<i64> {
-    tables
-        .iter()
-        .fold(seeds, tick)
-        .0
-        .iter()
-        .map(|range| range.start)
-        .min()
-}
-
-fn tick(mut seeds: Seeds, table: &Table) -> Seeds {
-    let mut new_seeds = table
-        .0
-        .iter()
-        .flat_map(|mapping: &Mapping| {
-            let source_range = mapping.into();
-            let offset = mapping.to - mapping.from;
-
-            let seed_source_ranges = seeds
-                .0
-                .overlapping(&source_range)
-                .map(|seed_range: &Range<i64>| {
-                    if source_range.contains(&seed_range.start)
-                        && source_range.contains(&seed_range.end)
-                    {
-                        seed_range.clone()
-                    } else if source_range.contains(&seed_range.start) {
-                        seed_range.start..source_range.end
-                    } else {
-                        source_range.start..seed_range.end
-                    }
-                })
-                .collect_vec();
-
-            for seed_source_range in &seed_source_ranges {
-                seeds.0.remove(seed_source_range.clone());
-            }
-
-            seed_source_ranges
-                .iter()
-                .map(|overlap| overlap.start + offset..overlap.end + offset)
-                .collect_vec()
-        })
-        .collect::<RangeSet<i64>>();
-    new_seeds.extend(seeds.0);
-    Seeds(new_seeds)
 }
 
 fn parse_table(from: &str, header_separator: &str) -> Option<Table> {
@@ -118,23 +81,19 @@ struct Mapping {
     len: i64,
 }
 
-impl PartialEq<Self> for Mapping {
-    fn eq(&self, other: &Self) -> bool {
-        self.from.eq(&other.from)
+impl Mapping {
+    fn reversed(&self) -> Self {
+        Self {
+            from: self.to,
+            to: self.from,
+            len: self.len,
+        }
     }
-}
 
-impl Eq for Mapping {}
-
-impl PartialOrd<Self> for Mapping {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Mapping {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.from.cmp(&other.from)
+    fn reverse(&mut self) {
+        let from = self.from;
+        self.from = self.to;
+        self.to = from;
     }
 }
 
@@ -145,7 +104,7 @@ impl From<&Mapping> for Range<i64> {
 }
 
 #[derive(Debug)]
-struct Table(BTreeSet<Mapping>);
+struct Table(Vec<Mapping>);
 
 impl FromStr for Table {
     type Err = ();
@@ -176,5 +135,20 @@ impl Table {
                     .then(|| mapping.to + (index - mapping.from))
             })
             .unwrap_or(index)
+    }
+
+    fn reversed(&self) -> Self {
+        Self(
+            self.0
+                .iter()
+                .map(Mapping::reversed)
+                .sorted_unstable_by_key(|mapping| mapping.from)
+                .collect_vec(),
+        )
+    }
+
+    fn reverse(&mut self) {
+        self.0.iter_mut().for_each(Mapping::reverse);
+        self.0.sort_unstable_by_key(|mapping| mapping.from);
     }
 }
