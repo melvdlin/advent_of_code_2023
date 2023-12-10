@@ -51,7 +51,11 @@ fn main() -> DynResult<()> {
                 .end_candidates
                 .iter()
                 .flat_map(|candidate| {
-                    traversal.records[candidate].traversal_indices.clone()
+                    traversal.records[candidate]
+                        .traversal_to_direction_indices
+                        .keys()
+                        .cloned()
+                        .clone()
                 })
                 .collect_vec()
         })
@@ -59,12 +63,57 @@ fn main() -> DynResult<()> {
 
     let end_candidate_combinations = end_candidates
         .iter()
+        .map(|vec| vec.iter().cloned())
         .multi_cartesian_product()
         .collect_vec();
 
-    dbg!(end_candidate_combinations);
+    let result: u64 = end_candidate_combinations
+        .into_par_iter()
+        .filter_map(|combination| {
+            if combination.len() < 2 {
+                return None;
+            }
+            let mut positions = combination
+                .iter()
+                .enumerate()
+                .map(|(idx, position)| (*position as u64, &traversals[idx]))
+                .sorted_unstable_by_key(|(position, _)| *position)
+                .rev()
+                .collect_vec();
 
-    let result: u64 = 0;
+            // check for end nodes that are outside of the cycle
+            for i in 1..positions.len() {
+                let position = positions[i].0;
+                let traversal = positions[i].1;
+                if position < traversal.cycle_start_idx as u64
+                    && position != positions[0].0
+                {
+                    return None;
+                }
+            }
+
+            // let mut n = 0;
+            loop {
+                let reference = positions[0].0;
+                // if n % 10_000_000 == 0 {
+                //     dbg!(n, reference);
+                // }
+                for (position, traversal) in positions[1..].iter_mut() {
+                    while *position < reference {
+                        *position += traversal.cycle_len as u64;
+                    }
+                }
+                if positions.iter().map(|(position, _)| position).all_equal() {
+                    break;
+                } else {
+                    positions[0].0 += positions[0].1.cycle_len as u64;
+                }
+                // n += 1;
+            }
+            Some(positions[0].0)
+        })
+        .min()
+        .unwrap_or(0);
 
     println!("{result}");
     Ok(())
@@ -72,15 +121,15 @@ fn main() -> DynResult<()> {
 
 #[derive(Debug, Clone)]
 struct TraversalRecord {
-    direction_indices: BTreeSet<usize>,
-    traversal_indices: BTreeSet<usize>,
+    direction_to_traversal_indices: BTreeMap<usize, usize>,
+    traversal_to_direction_indices: BTreeMap<usize, usize>,
 }
 
 impl TraversalRecord {
     pub fn new() -> Self {
         Self {
-            direction_indices: BTreeSet::new(),
-            traversal_indices: BTreeSet::new(),
+            direction_to_traversal_indices: BTreeMap::new(),
+            traversal_to_direction_indices: BTreeMap::new(),
         }
     }
 }
@@ -89,6 +138,7 @@ impl TraversalRecord {
 struct Traversal<'a> {
     start: Node<'a>,
     cycle_start: Node<'a>,
+    cycle_start_idx: usize,
     records: BTreeMap<Node<'a>, TraversalRecord>,
     end_candidates: BTreeSet<Node<'a>>,
     cycle_len: usize,
@@ -104,16 +154,24 @@ impl<'a> Traversal<'a> {
         let mut end_candidates = BTreeSet::new();
         let mut position = start;
         let mut cycle_len = 0;
+        let mut cycle_start_idx = 0;
         for (traversal_idx, (direction_idx, direction)) in
             directions.iter().enumerate().cycle().enumerate()
         {
             let record = records.entry(position).or_insert_with(TraversalRecord::new);
-            if record.direction_indices.contains(&direction_idx) {
+            if let Some(cycle_start) =
+                record.direction_to_traversal_indices.get(&direction_idx)
+            {
                 cycle_len = traversal_idx - direction_idx;
+                cycle_start_idx = *cycle_start;
                 break;
             } else {
-                record.direction_indices.insert(direction_idx);
-                record.traversal_indices.insert(traversal_idx);
+                record
+                    .direction_to_traversal_indices
+                    .insert(direction_idx, traversal_idx);
+                record
+                    .traversal_to_direction_indices
+                    .insert(traversal_idx, direction_idx);
                 if position.is_end() {
                     end_candidates.insert(position);
                 }
@@ -128,6 +186,7 @@ impl<'a> Traversal<'a> {
         Self {
             start,
             cycle_start: position,
+            cycle_start_idx,
             records,
             end_candidates,
             cycle_len,
