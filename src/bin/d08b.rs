@@ -44,6 +44,26 @@ fn main() -> DynResult<()> {
         .map(|position| Traversal::new(position, &map, &directions))
         .collect::<Vec<_>>();
 
+    let end_candidates = traversals
+        .iter()
+        .map(|traversal| {
+            traversal
+                .end_candidates
+                .iter()
+                .flat_map(|candidate| {
+                    traversal.records[candidate].traversal_indices.clone()
+                })
+                .collect_vec()
+        })
+        .collect_vec();
+
+    let end_candidate_combinations = end_candidates
+        .iter()
+        .multi_cartesian_product()
+        .collect_vec();
+
+    dbg!(end_candidate_combinations);
+
     let result: u64 = 0;
 
     println!("{result}");
