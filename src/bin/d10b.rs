@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::env;
-use std::ops::Neg;
+use std::ops::{Add, Neg};
 
 fn main() -> DynResult<()> {
     let input = load_input(env::args_os().nth(1).expect("no input provided"))?;
@@ -56,25 +56,25 @@ fn main() -> DynResult<()> {
                         Some(
                             match [
                                 field
-                                    .get(&walk(*position, Direction::Left))
+                                    .get(&position.add(Direction::Left))
                                     .cloned()
                                     .flatten()
                                     .flatten()
                                     .is_some_and(|pipe| pipe.connects(Direction::Right)),
                                 field
-                                    .get(&walk(*position, Direction::Right))
+                                    .get(&position.add(Direction::Right))
                                     .cloned()
                                     .flatten()
                                     .flatten()
                                     .is_some_and(|pipe| pipe.connects(Direction::Left)),
                                 field
-                                    .get(&walk(*position, Direction::Up))
+                                    .get(&position.add(Direction::Up))
                                     .cloned()
                                     .flatten()
                                     .flatten()
                                     .is_some_and(|pipe| pipe.connects(Direction::Down)),
                                 field
-                                    .get(&walk(*position, Direction::Down))
+                                    .get(&position.add(Direction::Down))
                                     .cloned()
                                     .flatten()
                                     .flatten()
@@ -120,7 +120,7 @@ fn main() -> DynResult<()> {
             .cloned()
             .find(|direction_candidate| *direction_candidate != -direction)
             .ok_or("dead end")?;
-        let next = walk(current, next_direction);
+        let next = current + next_direction;
 
         maze_traversal.push(current);
         maze.insert(current, DirectedPipe::new(direction, next_direction));
@@ -145,72 +145,38 @@ fn main() -> DynResult<()> {
     let result = tiles
         .iter()
         .filter(|tile| {
-            let mut pro = 0;
-            let mut contra = 0;
-            let x = tile.x;
-            let y = tile.y;
-            for x in 0..x {
-                if let Some(pipe) = maze.get(&Vector2::new(x, y)) {
-                    let directions = pipe.traversal_directions();
-                    if directions.contains(&Direction::Up) {
-                        if directions.contains(&Direction::Right) {
-                            contra += 1;
-                        } else {
-                            pro += 1;
-                        }
-                    }
-                    if directions.contains(&Direction::Down) {
-                        if directions.contains(&Direction::Left) {
-                            contra += 1;
-                        } else {
-                            pro += 1;
-                        }
-                    }
+            let mut tally = 0;
+            for (position, pipe) in &maze {
+                let diff = *tile - position;
+
+                let horizontal_sign = diff.y.signum();
+                let vertical_sign = diff.x.signum();
+
+                let mut horizontal_score = 0;
+                let mut vertical_score = 0;
+
+                match pipe.from {
+                    | Direction::Right => horizontal_score += 1,
+                    | Direction::Left => horizontal_score -= 1,
+                    | Direction::Up => vertical_score += 1,
+                    | Direction::Down => vertical_score -= 1,
                 }
-            }
 
-            if pro != contra {
-                return false;
-            }
-
-            for x in x + 1..x_extent {
-                if let Some(pipe) = maze.get(&Vector2::new(x, y)) {
-                    let directions = pipe.traversal_directions();
-                    if directions.contains(&Direction::Up) {
-                        if directions.contains(&Direction::Right) {
-                            contra += 1;
-                        } else {
-                            pro += 1;
-                        }
-                    }
-                    if directions.contains(&Direction::Down) {
-                        if directions.contains(&Direction::Left) {
-                            contra += 1;
-                        } else {
-                            pro += 1;
-                        }
-                    }
+                match pipe.to {
+                    | Direction::Left => horizontal_score += 1,
+                    | Direction::Right => horizontal_score -= 1,
+                    | Direction::Down => vertical_score += 1,
+                    | Direction::Up => vertical_score -= 1,
                 }
-            }
 
-            pro == contra
+                tally += horizontal_score * horizontal_sign;
+                tally += vertical_score * vertical_sign;
+            }
+            tally == 0
         })
         .count();
-
     println!("{result}");
     Ok(())
-}
-
-fn walk<T: Scalar + Neg<Output = T> + ClosedAdd<Output = T> + One + Zero>(
-    from: Vector2<T>,
-    direction: Direction,
-) -> Vector2<T> {
-    from + match direction {
-        | Direction::Left => Vector2::new(-T::one(), T::zero()),
-        | Direction::Right => Vector2::new(T::one(), T::zero()),
-        | Direction::Up => Vector2::new(T::zero(), -T::one()),
-        | Direction::Down => Vector2::new(T::zero(), T::one()),
-    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -271,7 +237,32 @@ enum Direction {
     Down,
 }
 
-impl std::ops::Neg for Direction {
+impl<T: Scalar + Neg<Output = T> + ClosedAdd<Output = T> + One + Zero> Add<Direction>
+    for Vector2<T>
+{
+    type Output = Self;
+
+    fn add(self, rhs: Direction) -> Self::Output {
+        &self + rhs
+    }
+}
+
+impl<T: Scalar + Neg<Output = T> + ClosedAdd<Output = T> + One + Zero> Add<Direction>
+    for &Vector2<T>
+{
+    type Output = Vector2<T>;
+
+    fn add(self, rhs: Direction) -> Self::Output {
+        self + match rhs {
+            | Direction::Left => Vector2::new(-T::one(), T::zero()),
+            | Direction::Right => Vector2::new(T::one(), T::zero()),
+            | Direction::Up => Vector2::new(T::zero(), -T::one()),
+            | Direction::Down => Vector2::new(T::zero(), T::one()),
+        }
+    }
+}
+
+impl Neg for Direction {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
