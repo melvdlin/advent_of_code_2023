@@ -112,14 +112,21 @@ fn main() -> DynResult<()> {
 
     let mut current = start;
     let mut current_node = field[&current].ok_or("dead end")?;
-    let mut direction = current_node.connects[0];
+    let mut previous_direction: Option<Direction> = None;
     loop {
-        let next_direction = current_node
-            .connects
-            .iter()
-            .cloned()
-            .find(|direction_candidate| *direction_candidate != -direction)
-            .ok_or("dead end")?;
+        let (direction, next_direction) = if let Some(direction) = previous_direction {
+            (
+                direction,
+                if current_node.connects[0] != direction {
+                    current_node.connects[0]
+                } else {
+                    current_node.connects[1]
+                },
+            )
+        } else {
+            let direction = -current_node.connects[0];
+            (direction, current_node.connects[1])
+        };
         let next = current + next_direction;
 
         maze_traversal.push(current);
@@ -131,7 +138,7 @@ fn main() -> DynResult<()> {
 
         current = next;
         current_node = field[&current].ok_or("dead end")?;
-        direction = next_direction;
+        previous_direction = Some(-next_direction);
     }
 
     let tiles = (0..x_extent)
@@ -141,6 +148,7 @@ fn main() -> DynResult<()> {
     let tiles = tiles.collect_vec();
 
     dbg!(tiles.len());
+    dbg!(&maze);
 
     let result = tiles
         .iter()
