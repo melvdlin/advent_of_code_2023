@@ -1,8 +1,8 @@
 use advent_of_code_2023::{load_input, DynResult};
 use itertools::Itertools;
 use nalgebra::{ClosedAdd, Scalar, Vector2};
+use nalgebra_glm::vec2_to_vec3;
 use num_traits::{One, Zero};
-use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::env;
 use std::ops::{Add, Neg};
@@ -107,7 +107,7 @@ fn main() -> DynResult<()> {
         })
         .collect::<HashMap<_, _>>();
 
-    let mut maze_traversal = Vec::new();
+    let mut traversal = Vec::new();
     let mut maze = HashMap::new();
 
     let mut current = start;
@@ -129,7 +129,7 @@ fn main() -> DynResult<()> {
         };
         let next = current + next_direction;
 
-        maze_traversal.push(current);
+        traversal.push(current);
         maze.insert(current, DirectedPipe::new(direction, next_direction));
 
         if next == start {
@@ -147,40 +147,41 @@ fn main() -> DynResult<()> {
         .filter(|position| !maze.contains_key(position));
     let tiles = tiles.collect_vec();
 
-    dbg!(tiles.len());
-    dbg!(&maze);
-
-    let result = tiles
+    let traversal_float = traversal
         .iter()
+        .cloned()
+        .map(|pipe| Vector2::<f64>::new(pipe.x as f64, pipe.y as f64))
+        .collect_vec();
+    let tiles_float = tiles
+        .iter()
+        .cloned()
+        .map(|tile| Vector2::<f64>::new(tile.x as f64, tile.y as f64))
+        .collect_vec();
+
+    let result = tiles_float
+        .into_iter()
         .filter(|tile| {
-            let mut tally = 0;
-            for (position, pipe) in &maze {
-                let diff = *tile - position;
+            let mut integral: f64 = 0.0;
 
-                let horizontal_sign = diff.y.signum();
-                let vertical_sign = diff.x.signum();
+            let mut previous = if let Some(pipe) = traversal_float.last() {
+                pipe
+            } else {
+                return false;
+            } - tile;
 
-                let mut horizontal_score = 0;
-                let mut vertical_score = 0;
+            for pipe in &traversal_float {
+                let pipe = pipe - tile;
+                let angle = pipe.angle(&previous);
+                let direction = vec2_to_vec3(&pipe)
+                    .cross(&vec2_to_vec3(&previous))
+                    .z
+                    .signum();
+                integral += angle * direction;
 
-                match pipe.from {
-                    | Direction::Right => horizontal_score += 1,
-                    | Direction::Left => horizontal_score -= 1,
-                    | Direction::Up => vertical_score += 1,
-                    | Direction::Down => vertical_score -= 1,
-                }
-
-                match pipe.to {
-                    | Direction::Left => horizontal_score += 1,
-                    | Direction::Right => horizontal_score -= 1,
-                    | Direction::Down => vertical_score += 1,
-                    | Direction::Up => vertical_score -= 1,
-                }
-
-                tally += horizontal_score * horizontal_sign;
-                tally += vertical_score * vertical_sign;
+                previous = pipe;
             }
-            tally == 0
+
+            integral.abs() > 0.005
         })
         .count();
     println!("{result}");
@@ -196,15 +197,6 @@ struct DirectedPipe {
 impl DirectedPipe {
     fn new(from: Direction, to: Direction) -> Self {
         Self { from, to }
-    }
-
-    fn traversal_directions(&self) -> SmallVec<[Direction; 2]> {
-        let mut result = SmallVec::new();
-        result.push(-self.from);
-        if self.to != -self.from {
-            result.push(self.to);
-        }
-        result
     }
 }
 
