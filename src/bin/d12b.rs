@@ -2,6 +2,7 @@ use advent_of_code_2023::{load_input, DynResult};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::env;
+use std::ops::Range;
 
 fn main() -> DynResult<()> {
     let input = load_input(env::args_os().nth(1).expect("no input provided"))?;
@@ -23,6 +24,11 @@ fn main() -> DynResult<()> {
             .take(5)
             .flatten()
             .collect::<Result<Vec<_>, _>>()?;
+            let springs = springs
+                .iter()
+                .batching(SpringSection::from_iter)
+                .filter(|section| !section.is_empty())
+                .collect_vec();
             let damaged = std::iter::repeat(
                 split
                     .next()
@@ -38,16 +44,27 @@ fn main() -> DynResult<()> {
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let result: usize = conditions
-        .iter()
-        .enumerate()
-        .map(|(idx, (springs, damaged_runs))| {
-            let mut cache = HashMap::new();
-            let fit = cached_fit(springs, damaged_runs, &mut cache);
-            println!("{idx}: {fit}");
-            fit
-        })
-        .sum();
+    for (idx, (sections, runs)) in conditions.into_iter().enumerate() {
+        println!(
+            "{idx}:\n[{} ]\n{runs:?}",
+            sections
+                .iter()
+                .map(|section| format!(" {section:?}"))
+                .join(",\n ")
+        )
+    }
+
+    let result: usize = 0;
+    // conditions
+    // .iter()
+    // .enumerate()
+    // .map(|(idx, (springs, damaged_runs))| {
+    //     let mut cache = HashMap::new();
+    //     let fit = cached_fit(springs, damaged_runs, &mut cache);
+    //     println!("{idx}: {fit}");
+    //     fit
+    // })
+    // .sum();
 
     println!("{result}");
     Ok(())
@@ -145,4 +162,53 @@ enum Condition {
     Working,
     Damaged,
     Unknown,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct SpringSection {
+    len: usize,
+    damaged: Vec<Range<usize>>,
+}
+
+impl SpringSection {
+    fn from_iter<'a, I: 'a + Iterator<Item = &'a Condition>>(
+        iter: &mut I,
+    ) -> Option<Self> {
+        let mut range_start = None;
+        let mut damaged = Vec::new();
+        let mut len = 0;
+        let mut not_empty = false;
+        for (idx, condition) in iter.enumerate() {
+            not_empty = true;
+            match condition {
+                | Condition::Working => {
+                    len = idx;
+                    if let Some(start) = range_start {
+                        damaged.push(start..idx)
+                    }
+                    break;
+                }
+                | Condition::Damaged => {
+                    if range_start.is_none() {
+                        range_start = Some(idx);
+                    }
+                }
+                | Condition::Unknown => {
+                    if let Some(start) = range_start.take() {
+                        damaged.push(start..idx);
+                    }
+                }
+            }
+        }
+
+        not_empty.then_some(Self { len, damaged })
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
