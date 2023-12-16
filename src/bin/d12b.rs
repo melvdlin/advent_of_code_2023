@@ -182,10 +182,6 @@ impl SpringSection {
             not_empty = true;
             match condition {
                 | Condition::Working => {
-                    len = idx;
-                    if let Some(start) = range_start {
-                        damaged.push(start..idx)
-                    }
                     break;
                 }
                 | Condition::Damaged => {
@@ -199,6 +195,11 @@ impl SpringSection {
                     }
                 }
             }
+            len += 1;
+        }
+
+        if let Some(start) = range_start {
+            damaged.push(start..len)
         }
 
         not_empty.then_some(Self { len, damaged })
